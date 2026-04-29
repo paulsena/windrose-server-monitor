@@ -81,13 +81,14 @@
     padding: 1.6rem 2.15rem;
     position: relative;
     overflow: hidden;
+    border-radius: 12px;
     background:
       radial-gradient(ellipse at 50% 0%, rgba(166, 118, 42, 0.22), transparent 58%),
       radial-gradient(ellipse at 12% 50%, rgba(241, 209, 138, 0.08), transparent 34%),
       radial-gradient(ellipse at 88% 42%, rgba(183, 127, 35, 0.1), transparent 38%),
       linear-gradient(135deg, rgba(27, 30, 33, 0.99) 0%, rgba(14, 14, 13, 0.99) 48%, rgba(31, 22, 13, 0.98) 100%),
       repeating-linear-gradient(0deg, rgba(255,255,255,0.014) 0 1px, transparent 1px 4px);
-    border-color: rgba(183, 127, 35, 0.52);
+    border-color: rgba(183, 127, 35, 0.2);
     box-shadow:
       0 24px 58px rgba(0, 0, 0, 0.68),
       inset 0 1px 0 rgba(241, 209, 138, 0.1),
@@ -188,14 +189,20 @@
     text-transform: uppercase;
   }
 
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 8px rgba(184, 212, 122, 0.5); }
+    50% { box-shadow: 0 0 18px rgba(184, 212, 122, 0.9); }
+  }
+
   .dot {
     display: inline-block;
     width: 9px;
     height: 9px;
     border-radius: 50%;
     background: var(--green);
-    box-shadow: 0 0 12px rgba(184, 212, 122, 0.62);
+    box-shadow: 0 0 8px rgba(184, 212, 122, 0.5);
     flex: 0 0 auto;
+    animation: pulse 2.4s ease-in-out infinite;
   }
 
   .dot.off {
@@ -252,8 +259,10 @@
     padding: 0 1.95rem 1.95rem;
     position: relative;
     overflow: hidden;
+    border-radius: 12px;
+    border: 1px solid rgba(218, 174, 88, 0.13);
     background:
-      linear-gradient(180deg, rgba(50, 39, 27, 0.98) 0%, rgba(34, 29, 23, 0.98) 42%, rgba(22, 20, 17, 0.98) 100%),
+      linear-gradient(180deg, rgba(50, 39, 27, 0.98) 0%, rgba(20, 17, 13, 0.99) 35%, rgba(12, 10, 8, 1) 100%),
       repeating-linear-gradient(0deg, rgba(255,255,255,0.014) 0 1px, transparent 1px 4px);
   }
 
@@ -261,10 +270,8 @@
     content: "";
     position: absolute;
     inset: 0 0 auto;
-    height: 64px;
-    background: linear-gradient(180deg, rgba(118, 80, 28, 0.98), rgba(78, 52, 20, 0.92));
-    border-bottom: 1px solid var(--line-soft);
-    opacity: 1;
+    height: 80px;
+    background: linear-gradient(180deg, rgba(118, 80, 28, 0.85) 0%, rgba(78, 52, 20, 0.5) 60%, transparent 100%);
     z-index: 0;
   }
 
@@ -275,7 +282,7 @@
     gap: 1rem;
     min-height: 64px;
     padding: 0;
-    border-bottom: 1px solid rgba(241, 209, 138, 0.34);
+    border-bottom: 1px solid rgba(241, 209, 138, 0.18);
     position: relative;
     z-index: 1;
   }
@@ -294,6 +301,23 @@
     font-weight: 700;
     text-shadow: 0 1px 0 rgba(0,0,0,0.42);
   }
+
+  .legend {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 1rem;
+    margin-inline: -0.75rem;
+    padding: 0.55rem 0.75rem 0;
+    color: rgba(185, 155, 90, 0.4);
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    position: relative;
+    z-index: 1;
+  }
+
+  .legend span:last-child { text-align: right; }
 
   .list {
     display: grid;
@@ -315,6 +339,7 @@
   }
 
   .row:last-child { border-bottom: 0; }
+
 
   .identity {
     display: grid;
@@ -364,21 +389,25 @@
   }
 
   .recent .name {
-    color: #d9c59a;
-    font-size: 0.9rem;
+    color: #d4bc9e;
     font-weight: 500;
   }
 
   .recent .time {
-    color: #9d8359;
-    font-size: 0.8rem;
+    color: #b39878;
+    font-weight: 500;
   }
 
-  .recent .time strong {
+  .recent .time small {
+    color: #8e7a62;
+  }
+
+  .time small {
     display: block;
-    margin-top: 0.3rem;
-    color: #cdb98e;
-    font-size: 0.75rem;
+    margin-top: 0.2rem;
+    color: var(--dim);
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
     font-weight: 500;
   }
 
@@ -389,12 +418,12 @@
     min-height: 28px;
     margin-right: 0.75rem;
     padding: 0.2rem 0.72rem;
-    color: var(--gold);
-    background: rgba(107, 71, 23, 0.78);
-    border: 1px solid rgba(241, 209, 138, 0.6);
-    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+    color: rgba(185, 155, 90, 0.65);
+    background: rgba(80, 55, 18, 0.35);
+    border: 1px solid rgba(200, 165, 90, 0.2);
+    border-radius: 999px;
     font-family: var(--font-display);
-    font-size: 0.83rem;
+    font-size: 0.78rem;
     font-style: italic;
     white-space: nowrap;
   }
@@ -520,13 +549,6 @@
       text-align: center;
     }
     .panel-count { text-align: center; }
-    .row {
-      grid-template-columns: 1fr;
-    }
-    .time {
-      text-align: left;
-      padding-left: 2.85rem;
-    }
   }
 </style>
 </head>
@@ -556,9 +578,10 @@
   <main class="main-grid">
     <section class="panel">
       <div class="section-head">
-        <h2>Crew On Board</h2>
-        <div class="panel-count" id="online-count">Crew aboard: <span id="crew-online">0</span> / <span id="crew-max">?</span></div>
+        <h2>Crew Aboard</h2>
+        <div class="panel-count" id="online-count">Crew: <span id="crew-online">0</span> / <span id="crew-max">?</span></div>
       </div>
+      <div class="legend"><span>Online Sailors</span><span>Time at the helm</span></div>
       <div id="online-empty" class="empty">No crew are aboard right now.</div>
       <div id="online-body" class="list hidden"></div>
     </section>
@@ -567,6 +590,7 @@
       <div class="section-head">
         <h2>Davy Jones' Locker</h2>
       </div>
+      <div class="legend"><span>Offline Sailors</span><span>Last seen</span></div>
       <div id="recent-empty" class="empty">No history yet.</div>
       <div id="recent-body" class="list hidden"></div>
     </section>
@@ -574,7 +598,7 @@
 
   <div class="as-of">updated <span id="as-of">loading</span></div>
   <footer class="footer">
-    <span>❤️ made with love in Asheville, NC</span>
+    <span>Made with 🏴‍☠️ in Asheville, NC</span>
     <a class="footer-link" href="https://github.com/paulsena/windrose-server-player-monitor" target="_blank" rel="noopener noreferrer" aria-label="View windrose-server-player-monitor on GitHub">
       <svg class="github-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
         <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82A7.65 7.65 0 0 1 8 3.86c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"></path>
@@ -608,8 +632,8 @@
     var hours = parseInt(parts[0], 10);
     var minutes = parseInt(parts[1], 10);
     if (!hours && !minutes) return '< 1 min';
-    if (!hours) return minutes + ' min';
-    return hours + ' hr' + (minutes ? ' ' + minutes + ' min' : '');
+    if (!hours) return minutes + ' mins';
+    return hours + ' hr' + (minutes ? ' ' + minutes + ' mins' : '');
   }
 
   function parseDurationMs(raw) {
@@ -627,10 +651,10 @@
     if (ms === null || isNaN(ms)) return '-';
     var minutes = Math.floor(Math.max(0, ms) / 60000);
     if (minutes < 1) return '< 1 min';
-    if (minutes < 60) return minutes + ' min';
+    if (minutes < 60) return minutes + ' mins';
     var hours = Math.floor(minutes / 60);
     var rem = minutes % 60;
-    return hours + ' hr' + (rem ? ' ' + rem + ' min' : '');
+    return hours + ' hr' + (rem ? ' ' + rem + ' mins' : '');
   }
 
   function formatPlayerDuration(player) {
@@ -650,7 +674,7 @@
     var seconds = Math.max(0, (Date.now() - date.getTime()) / 1000);
     if (seconds < 60) return 'just now';
     var minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return minutes + ' min ago';
+    if (minutes < 60) return minutes + ' mins ago';
     var hours = Math.floor(minutes / 60);
     if (hours < 24) return hours + ' hr ago';
     var days = Math.floor(hours / 24);
@@ -713,8 +737,7 @@
     row.className = 'row';
     renderIdentity(row, player, false);
     var time = append(row, 'div', 'time', ago(player.left_at));
-    var played = formatDuration(player.time_in_game);
-    append(time, 'strong', '', 'played ' + played);
+    append(time, 'small', '', 'played ' + formatDuration(player.time_in_game));
     return row;
   }
 
