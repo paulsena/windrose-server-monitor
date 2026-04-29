@@ -2,7 +2,8 @@
 
 [![GitHub](https://img.shields.io/badge/GitHub-windrose--server--monitor-181717?logo=github&style=flat-square)](https://github.com/paulsena/windrose-server-monitor)
 
-A live player dashboard for your Windrose dedicated server so you can know when your mates are online to play with! Drop it on your server machine, point it at `R5.log`, and get a real-time crew roster in your browser — with optional Discord join/leave alerts. Pure Python, no installs required.
+A live player dashboard for your Windrose dedicated server so you can know when your mates are online to play with! 
+Simply, drop it on your server machine, point it at `R5.log`, and get a real-time crew roster in your browser — with optional Discord join/leave alerts. Pure Python, no installs required.
 
 ![Windrose Server Monitor dashboard showing online players and recently seen crew](assets/dashboard-example.png)
 
