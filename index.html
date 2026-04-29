@@ -197,29 +197,35 @@
     font-size: 0.82rem;
   }
 
-  .stats {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 1rem;
+  .stats-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-around;
+    gap: 1.5rem;
     margin-top: 1.65rem;
+    padding: 1.25rem 1.5rem;
+    background: linear-gradient(180deg, rgba(70, 51, 33, 0.82), rgba(43, 30, 20, 0.9));
+    border: 1px solid var(--line-soft);
+    box-shadow: 0 18px 44px var(--shadow), inset 0 1px 0 rgba(240, 201, 107, 0.08);
   }
 
-  .stat {
-    min-height: 116px;
-    padding: 1.3rem 1.45rem;
-    border-top-color: rgba(240, 201, 107, 0.42);
+  .stat-item {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
   }
 
   .label {
     color: var(--dim);
-    font-size: 0.73rem;
+    font-size: 0.85rem;
     font-weight: 700;
-    margin-bottom: 0.75rem;
+    margin: 0;
   }
 
   .stat-value {
     color: var(--text);
-    font-size: 1.55rem;
+    font-size: 1.25rem;
     font-weight: 800;
     line-height: 1.05;
     overflow-wrap: anywhere;
@@ -228,16 +234,8 @@
   .stat-value .gold {
     color: var(--gold);
     font-family: Georgia, "Times New Roman", serif;
-    font-size: 1.9rem;
+    font-size: 1.4rem;
     font-weight: 400;
-  }
-
-  .stat-sub {
-    margin-top: 0.45rem;
-    color: var(--muted);
-    font-family: "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
-    font-size: 0.86rem;
-    overflow-wrap: anywhere;
   }
 
   .main-grid {
@@ -407,7 +405,6 @@
       grid-column: 1 / -1;
       text-align: left;
     }
-    .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .main-grid { grid-template-columns: 1fr; }
   }
 
@@ -420,7 +417,6 @@
     }
     .crest { margin: 0 auto; }
     .status-block { text-align: center; }
-    .stats { grid-template-columns: 1fr; }
     .panel { padding: 1.25rem; min-height: 0; }
     .section-head { align-items: flex-start; flex-direction: column; }
     .row {
@@ -464,26 +460,22 @@
     </div>
   </header>
 
-  <section class="stats" aria-label="Server summary">
-    <div class="stat">
-      <div class="label">Crew aboard</div>
+  <section class="stats-bar" aria-label="Server summary">
+    <div class="stat-item">
+      <div class="label">Crew aboard:</div>
       <div class="stat-value"><span class="gold" id="crew-online">0</span> / <span id="crew-max">?</span></div>
-      <div class="stat-sub" id="crew-open">berths unknown</div>
     </div>
-    <div class="stat">
-      <div class="label">Access</div>
+    <div class="stat-item">
+      <div class="label">Access:</div>
       <div class="stat-value" id="access">Unknown</div>
-      <div class="stat-sub" id="access-sub">waiting for server info</div>
     </div>
-    <div class="stat">
-      <div class="label">Island</div>
+    <div class="stat-item">
+      <div class="label">Island:</div>
       <div class="stat-value" id="world-short">Unknown</div>
-      <div class="stat-sub" id="world-sub">world id pending</div>
     </div>
-    <div class="stat">
-      <div class="label">Build</div>
+    <div class="stat-item">
+      <div class="label">Build:</div>
       <div class="stat-value" id="build">Unknown</div>
-      <div class="stat-sub" id="build-sub">dashboard api - waiting</div>
     </div>
   </section>
 
@@ -578,7 +570,8 @@
   }
 
   function setText(id, value) {
-    document.getElementById(id).textContent = value;
+    var el = document.getElementById(id);
+    if (el) el.textContent = value;
   }
 
   function text(value) {
@@ -613,7 +606,6 @@
     dot.setAttribute('aria-hidden', 'true');
     var copy = append(identity, 'div');
     append(copy, 'div', 'name', player.name || '(unnamed)');
-    append(copy, 'div', 'meta', online ? (player.state || 'In game') : (player.farewell_reason || player.state || 'disconnected'));
   }
 
   function renderOnlineRow(player, index) {
