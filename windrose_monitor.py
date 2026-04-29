@@ -1030,7 +1030,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--log", default="R5.log", help="path to R5.log")
     p.add_argument("--no-replay", action="store_true",
                    help="skip replaying the existing log; only watch for new events")
-    p.add_argument("--host", default="127.0.0.1", help="HTTP bind host (default loopback)")
+    p.add_argument("--host", default="0.0.0.0", help="HTTP bind host (default all interfaces)")
     p.add_argument("--port", type=int, default=8080, help="HTTP bind port")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)

@@ -41,22 +41,12 @@ That's it. No pip installs needed.
 3. **Open your browser** and go to:
 
    ```
-   http://127.0.0.1:8080
+   http://localhost:8080
    ```
 
-   You'll see the live player dashboard. It refreshes automatically every 10 seconds.
+   You'll see the live player dashboard. It refreshes automatically every 10 seconds. Others on your network can reach it at your machine's IP address on port 8080.
 
----
-
-## Making the Dashboard Accessible From Other Computers
-
-By default the web server only listens on your local machine (`127.0.0.1`). To let others on your network (or the internet) see it, bind to all interfaces:
-
-```bash
-python windrose_monitor.py --log "C:\path\to\R5.log" --host 0.0.0.0 --port 8080
-```
-
-> **Note:** If you expose this to the internet, consider putting it behind a reverse proxy (like Nginx or Caddy) with HTTPS and optional password protection.
+> **Exposing to the internet:** The easiest way is a [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) — no router port forwarding needed. Cloudflare gives you a public HTTPS URL that tunnels straight to your local port 8080. Free to use.
 
 ---
 
@@ -94,7 +84,7 @@ python windrose_monitor.py --help
 | Option | Default | Description |
 |---|---|---|
 | `--log <path>` | `R5.log` | Path to your Windrose server log file |
-| `--host <ip>` | `127.0.0.1` | IP address to listen on (use `0.0.0.0` for network access) |
+| `--host <ip>` | `0.0.0.0` | IP address to listen on (`127.0.0.1` for local-only) |
 | `--port <port>` | `8080` | Port for the web dashboard |
 | `--no-replay` | off | Skip reading existing log history; only process new events |
 | `-v` / `--verbose` | off | Enable detailed debug logging |
@@ -171,8 +161,9 @@ sudo systemctl start windrose-monitor
 - Check the terminal output for any warning messages about the webhook.
 
 **I can't access the dashboard from another computer**
-- Run with `--host 0.0.0.0` to listen on all network interfaces.
-- Make sure your firewall allows traffic on the port (default `8080`).
+- Make sure your firewall allows inbound traffic on port `8080`.
+- For internet access without touching your router, use a [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) — it's free and takes about 5 minutes to set up.
+- Use `--host 127.0.0.1` if you want to restrict access to the local machine only.
 
 ---
 
