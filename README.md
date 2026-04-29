@@ -52,24 +52,13 @@ That's it. No pip installs needed.
 
 ## Discord Notifications
 
-Set the `DISCORD_WEBHOOK_URL` environment variable to your Discord webhook URL before running the script.
+Pass your webhook URL directly with `--webhook`:
 
-**Windows (Command Prompt):**
-```cmd
-set DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR/WEBHOOK
-python windrose_monitor.py --log "C:\path\to\R5.log"
-```
-
-**Windows (PowerShell):**
-```powershell
-$env:DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/YOUR/WEBHOOK"
-python windrose_monitor.py --log "C:\path\to\R5.log"
-```
-
-**Linux / macOS:**
 ```bash
-DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/YOUR/WEBHOOK" python windrose_monitor.py --log /path/to/R5.log
+python windrose_monitor.py --log "C:\path\to\R5.log" --webhook "https://discord.com/api/webhooks/YOUR/WEBHOOK"
 ```
+
+Alternatively, set the `DISCORD_WEBHOOK_URL` environment variable and the script will pick it up automatically — useful if you're running it as a background service.
 
 To get a webhook URL: open your Discord server → Edit Channel → Integrations → Webhooks → New Webhook → Copy URL.
 
@@ -86,7 +75,7 @@ python windrose_monitor.py --help
 | `--log <path>` | `R5.log` | Path to your Windrose server log file |
 | `--host <ip>` | `0.0.0.0` | IP address to listen on (`127.0.0.1` for local-only) |
 | `--port <port>` | `8080` | Port for the web dashboard |
-| `--no-replay` | off | Skip reading existing log history; only process new events |
+| `--webhook <url>` | _(none)_ | Discord webhook URL (or set `DISCORD_WEBHOOK_URL` env var) |
 | `-v` / `--verbose` | off | Enable detailed debug logging |
 
 ---

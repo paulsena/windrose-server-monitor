@@ -5,7 +5,7 @@ of currently-connected players, serves a small web page, and posts join/leave
 notifications to a Discord webhook (optional).
 
 Standard library only.
-    python windrose_monitor.py --log path/to/R5.log
+    python windrose_monitor.py --log path/to/R5.log --webhook https://discord.com/api/webhooks/...
 """
 
 from __future__ import annotations
@@ -28,7 +28,6 @@ from urllib import error as urlerror
 from urllib import request as urlrequest
 
 log = logging.getLogger("windrose_monitor")
-webhook = os.getenv("DISCORD_WEBHOOK_URL", "")
 
 
 SECTION_HEADERS = ("Connected Accounts", "Reserved Accounts", "Disconnected Accounts")
@@ -539,7 +538,6 @@ def _find_last_dump_offset(path: str) -> int:
 def tail_file(
     path: str,
     parser: DumpParser,
-    from_start: bool,
     on_bootstrap_done,
     stop: threading.Event,
 ) -> None:
@@ -549,7 +547,7 @@ def tail_file(
     file_id: tuple[int, int] = (0, 0)
     first_open = True
     reopen_from_start = False
-    in_bootstrap = from_start
+    in_bootstrap = True
 
     while not stop.is_set():
         if f is None:
@@ -560,7 +558,7 @@ def tail_file(
                 time.sleep(2)
                 continue
 
-            if first_open and from_start:
+            if first_open:
                 # Bootstrap: seek to start of the last dump rather than the
                 # beginning of the whole file, so startup is fast on large logs.
                 offset = _find_last_dump_offset(path)
@@ -569,9 +567,6 @@ def tail_file(
             elif reopen_from_start:
                 # After rotation: read the new file from the beginning.
                 f.seek(0)
-            else:
-                # --no-replay: tail from current end.
-                f.seek(0, os.SEEK_END)
 
             try:
                 st = os.fstat(f.fileno())
@@ -1028,10 +1023,10 @@ def _render_recent(players: list[dict]) -> str:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Windrose dedicated-server player monitor")
     p.add_argument("--log", default="R5.log", help="path to R5.log")
-    p.add_argument("--no-replay", action="store_true",
-                   help="skip replaying the existing log; only watch for new events")
     p.add_argument("--host", default="0.0.0.0", help="HTTP bind host (default all interfaces)")
     p.add_argument("--port", type=int, default=8080, help="HTTP bind port")
+    p.add_argument("--webhook", default=None,
+                   help="Discord webhook URL (overrides DISCORD_WEBHOOK_URL env var)")
     p.add_argument("-v", "--verbose", action="store_true")
     args = p.parse_args(argv)
 
@@ -1040,10 +1035,11 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
+    webhook = args.webhook or os.getenv("DISCORD_WEBHOOK_URL", "")
     if webhook:
         log.info("Discord notifications enabled")
     else:
-        log.info("DISCORD_WEBHOOK_URL not set; Discord notifications disabled")
+        log.info("Discord notifications disabled (set --webhook or DISCORD_WEBHOOK_URL to enable)")
     notifier = DiscordNotifier(webhook)
 
     roster = Roster()
@@ -1051,12 +1047,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = DumpParser(roster, known, notifier)
     stop = threading.Event()
 
-    do_replay = not args.no_replay
-    if do_replay:
-        # Suppress notifications during the replay of historical content;
-        # we'll un-suppress in on_bootstrap_done after reaching EOF.
-        notifier.quiet = True
-        log.info("Replaying last dump to backfill state (Discord notifications suppressed)...")
+    # Suppress notifications during the replay of historical content;
+    # we'll un-suppress in on_bootstrap_done after reaching EOF.
+    notifier.quiet = True
+    log.info("Replaying last dump to backfill state (Discord notifications suppressed)...")
 
     def on_bootstrap_done() -> None:
         notifier.quiet = False
@@ -1093,7 +1087,7 @@ def main(argv: list[str] | None = None) -> int:
 
     threading.Thread(
         target=tail_file,
-        args=(args.log, parser, do_replay, on_bootstrap_done, stop),
+        args=(args.log, parser, on_bootstrap_done, stop),
         name="tailer",
         daemon=True,
     ).start()
