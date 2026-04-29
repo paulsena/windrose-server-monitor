@@ -81,7 +81,9 @@ def _parse_log_time(s: str) -> datetime | None:
     return naive.replace(tzinfo=SERVER_TZ)
 
 
-def _parse_duration(s: str) -> timedelta | None:
+def _parse_duration(s: str | None) -> timedelta | None:
+    if not s:
+        return None
     s = s.lstrip("+")
     try:
         h, m, sec = s.split(":")
@@ -449,6 +451,10 @@ _DUMP_NEEDLES = (b"\nConnected Accounts\n", b"\nConnected Accounts\r\n")
 _CHUNK = 512 * 1024
 # Overlap consecutive chunks by this many bytes so a match can't straddle a boundary undetected.
 _OVERLAP = max(len(n) for n in _DUMP_NEEDLES) - 1  # 20 bytes
+# Matches the start of a bracketed log line: "\n[YYYY.MM.DD-" (or BOF).
+# Used to find the timestamp line that precedes a dump so the parser can
+# set last_log_time before consuming dump rows.
+_TIMESTAMP_LINE_RE = re.compile(rb"(?:\n|\A)\[\d{4}\.\d{2}\.\d{2}-")
 
 
 def _scan_server_info(path: str, scan_bytes: int = 2_000_000) -> tuple[datetime | None, dict | None]:
@@ -505,11 +511,15 @@ def _scan_server_info(path: str, scan_bytes: int = 2_000_000) -> tuple[datetime 
 
 
 def _find_last_dump_offset(path: str) -> int:
-    """Return the byte offset of the last 'Connected Accounts' line, or 0.
+    """Return the byte offset to start bootstrap reading from, or 0.
 
-    Reads the file in 512 KB chunks from the end, stopping as soon as a dump
-    header is found. Adjacent chunks overlap by the needle length so a match
-    can never fall on a chunk boundary undetected. Falls back to 0 (read from
+    Locates the last 'Connected Accounts' line, then walks back to the
+    timestamp-prefixed log line immediately preceding it. Reading from there
+    (rather than from the dump header itself) lets the parser observe the
+    timestamp line first and populate last_log_time, so dump rows get a valid
+    `as_of` for time-in-game extrapolation.
+
+    Reads the file in 512 KB chunks from the end. Falls back to 0 (read from
     start) only if the file contains no dump at all.
     """
     try:
@@ -526,7 +536,20 @@ def _find_last_dump_offset(path: str) -> int:
                 for needle in _DUMP_NEEDLES:
                     idx = data.rfind(needle)
                     if idx != -1:
-                        return start + idx + 1  # skip leading \n, land on "Connected Accounts"
+                        # Walk back to the timestamp line that precedes the dump.
+                        # If we can't find one in this chunk (rare, only on tiny
+                        # logs), fall back to the dump header itself.
+                        prev = data[:idx]
+                        ts_match = None
+                        for m in _TIMESTAMP_LINE_RE.finditer(prev):
+                            ts_match = m
+                        if ts_match is not None:
+                            ts_start = ts_match.start()
+                            # Skip the leading \n (if not BOF + this is the first chunk).
+                            if prev[ts_start:ts_start + 1] == b"\n":
+                                ts_start += 1
+                            return start + ts_start
+                        return start + idx + 1  # land on "Connected Accounts"
                 if start == 0:
                     break
                 pos = start + _OVERLAP  # re-examine tail of this chunk next iteration
@@ -541,84 +564,65 @@ def tail_file(
     on_bootstrap_done,
     stop: threading.Event,
 ) -> None:
-    f = None
-    pos = 0
+    """Poll the log: open, seek to last position, drain to EOF, close, sleep.
+
+    Re-opening each cycle is the simplest way to handle rotation reliably on
+    Windows, where stat-based detection (st_ino is often 0, st_size can be
+    cached) is unreliable. If the file is smaller than our tracked position
+    on a re-open, we treat it as rotation/truncation and read from the start.
+    """
+    pos = -1  # -1 sentinel: first open, do bootstrap fast-seek
     buf = ""
-    file_id: tuple[int, int] = (0, 0)
-    first_open = True
-    reopen_from_start = False
-    in_bootstrap = True
 
     while not stop.is_set():
-        if f is None:
-            try:
-                f = open(path, "r", encoding="utf-8", errors="replace")
-            except OSError as e:
-                log.warning("cannot open %s: %s; retrying", path, e)
-                time.sleep(2)
-                continue
-
-            if first_open:
-                # Bootstrap: seek to start of the last dump rather than the
-                # beginning of the whole file, so startup is fast on large logs.
-                offset = _find_last_dump_offset(path)
-                f.seek(offset)
-                log.info("bootstrap: fast-seeking to offset %d (last dump)", offset)
-            elif reopen_from_start:
-                # After rotation: read the new file from the beginning.
-                f.seek(0)
-
-            try:
-                st = os.fstat(f.fileno())
-                file_id = (st.st_dev, st.st_ino)
-            except OSError:
-                file_id = (0, 0)
-
-            pos = f.tell()
-            buf = ""
-            first_open = False
-            reopen_from_start = False
-            log.info("tailing %s from offset %d", path, pos)
-
-        # Detect log rotation (inode change) or truncation (size went backwards).
-        # On Windows NTFS via WSL2 st_ino is synthesised and reliable; on plain
-        # Windows it may be 0, in which case we fall back to size-only detection.
         try:
-            path_stat = os.stat(path)
-            path_id = (path_stat.st_dev, path_stat.st_ino)
-            rotated = (file_id[1] != 0 and path_id != file_id)
-            if path_stat.st_size < pos or rotated:
-                reason = "rotated" if rotated else "truncated"
-                log.info("log %s; reopening", reason)
-                f.close()
-                f = None
-                reopen_from_start = True
-                continue
-        except OSError:
-            f.close()
-            f = None
-            time.sleep(0.5)
+            f = open(path, "r", encoding="utf-8", errors="replace")
+        except OSError as e:
+            log.warning("cannot open %s: %s; retrying", path, e)
+            time.sleep(2)
             continue
 
-        chunk = f.read(8192)
-        if not chunk:
-            if in_bootstrap:
-                in_bootstrap = False
-                try:
-                    on_bootstrap_done()
-                except Exception:
-                    log.exception("on_bootstrap_done callback failed")
-            time.sleep(0.5)
+        try:
+            with f:
+                size = os.fstat(f.fileno()).st_size
+
+                if pos == -1:
+                    offset = _find_last_dump_offset(path)
+                    f.seek(offset)
+                    log.info("bootstrap: fast-seeking to offset %d (last dump)", offset)
+                elif size < pos:
+                    log.info("log shrank (size=%d < pos=%d); reading from start", size, pos)
+                    buf = ""  # discard partial line carried over from the rotated-out file
+                    f.seek(0)
+                else:
+                    f.seek(pos)
+
+                while not stop.is_set():
+                    chunk = f.read(8192)
+                    if not chunk:
+                        pos = f.tell()
+                        break
+                    buf += chunk
+                    while True:
+                        nl = buf.find("\n")
+                        if nl == -1:
+                            break
+                        line = buf[:nl]
+                        buf = buf[nl + 1:]
+                        parser.feed(line)
+        except OSError as e:
+            log.warning("error reading %s: %s; retrying", path, e)
+            time.sleep(2)
             continue
-        pos = f.tell()
-        buf += chunk
-        while True:
-            nl = buf.find("\n")
-            if nl == -1:
-                break
-            line = buf[:nl]
-            buf = buf[nl + 1:]
-            parser.feed(line)
+
+        if pos != -1 and on_bootstrap_done is not None:
+            try:
+                on_bootstrap_done()
+            except Exception:
+                log.exception("on_bootstrap_done callback failed")
+            on_bootstrap_done = None  # only fire once
+
+        time.sleep(10)
 
 
 WINDROSE_SVG = """\
@@ -975,9 +979,11 @@ def _render_online(players: list[dict]) -> str:
         raw_dur = p.get('time_in_game')
         as_of = p.get('as_of')  # aware datetime from log
 
-        # Extrapolate
+        # Extrapolate. timedelta(0) is falsy, so use `is not None` — otherwise
+        # players who just joined (TimeInGame +00:00:00) would display "0 mins"
+        # forever instead of growing as time passes.
         td = _parse_duration(raw_dur)
-        if td and as_of:
+        if td is not None and as_of:
             as_of_utc = as_of.astimezone(timezone.utc)
             elapsed = now - as_of_utc
             if elapsed.total_seconds() > 0:
