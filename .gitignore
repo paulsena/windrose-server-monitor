@@ -21,3 +21,4 @@ Thumbs.db
 # Unused assets
 pirate.png
 GEMINI.md
+tests/__init__.py
