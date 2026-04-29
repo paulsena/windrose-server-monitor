@@ -557,6 +557,7 @@ class DumpParser:
             "server_name": desc.get("ServerName", ""),
             "max_players": desc.get("MaxPlayerCount", 0),
             "password_protected": desc.get("IsPasswordProtected", False),
+            "invite_code": desc.get("InviteCode", ""),
             "world_id": desc.get("WorldIslandId", ""),
             "deployment_id": data.get("DeploymentId", ""),
         }
@@ -610,6 +611,7 @@ def _scan_server_info(path: str, scan_bytes: int = 2_000_000) -> tuple[datetime 
                                 "server_name": desc.get("ServerName", ""),
                                 "max_players": desc.get("MaxPlayerCount", 0),
                                 "password_protected": desc.get("IsPasswordProtected", False),
+                                "invite_code": desc.get("InviteCode", ""),
                                 "world_id": desc.get("WorldIslandId", ""),
                                 "deployment_id": data_j.get("DeploymentId", ""),
                             }

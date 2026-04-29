@@ -111,7 +111,10 @@ Response example:
   "server_info": {
     "server_name": "My Windrose Server",
     "max_players": 10,
-    "password_protected": false
+    "password_protected": false,
+    "invite_code": "95c71762",
+    "world_id": "example-world-id",
+    "deployment_id": "release-1.2.3"
   }
 }
 ```
