@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import mimetypes
 import os
 import queue
 import random
@@ -21,10 +22,10 @@ import sys
 import threading
 import time
 from datetime import datetime, timedelta, timezone
-from html import escape
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib import error as urlerror
+from urllib.parse import unquote, urlsplit
 from urllib import request as urlrequest
 
 log = logging.getLogger("windrose_monitor")
@@ -67,6 +68,10 @@ FAREWELL_RE = re.compile(r"FarewellReason\s+(.+?)\s*$")
 SERVER_DESC_RE = re.compile(r"R5LogCoopProxy.*SaveServerDescription.*Saved server description")
 
 SERVER_TZ = timezone.utc
+DEFAULT_STATE_PATH = "player_state.json"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+INDEX_HTML_PATH = os.path.join(BASE_DIR, "index.html")
+ASSETS_DIR = os.path.join(BASE_DIR, "assets")
 
 
 def _parse_log_time(s: str) -> datetime | None:
@@ -145,6 +150,28 @@ def _format_duration_str(s: str | None) -> str:
     return _format_timedelta(td)
 
 
+def _parse_iso_datetime(s: str | None) -> datetime | None:
+    if not s:
+        return None
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _json_ready_row(row: dict) -> dict:
+    out = dict(row)
+    for key, value in list(out.items()):
+        if isinstance(value, datetime):
+            out[key] = value.astimezone(timezone.utc).isoformat()
+    return out
+
+
 class Roster:
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -185,7 +212,21 @@ class KnownPlayers:
         self._lock = threading.Lock()
         self._players: dict[str, dict] = {}
 
-    def update_from_disconnected(self, rows: list[dict]) -> None:
+    def load(self, rows: list[dict]) -> int:
+        loaded = 0
+        with self._lock:
+            for row in rows:
+                aid = row.get("account_id")
+                if not aid:
+                    continue
+                parsed = dict(row)
+                parsed["left_at"] = _parse_iso_datetime(row.get("left_at"))
+                self._players[aid] = parsed
+                loaded += 1
+        return loaded
+
+    def update_from_disconnected(self, rows: list[dict]) -> bool:
+        changed = False
         with self._lock:
             for row in rows:
                 aid = row.get("account_id")
@@ -195,6 +236,8 @@ class KnownPlayers:
                 existing = self._players.get(aid)
                 if existing and existing.get("left_at") and left_at and existing["left_at"] >= left_at:
                     continue  # we already have a more recent record
+                if existing and existing.get("left_at") and left_at is None:
+                    continue  # avoid replacing a timestamped record with incomplete log data
                 self._players[aid] = {
                     "name": row.get("name") or existing.get("name") if existing else row.get("name"),
                     "account_id": aid,
@@ -204,6 +247,27 @@ class KnownPlayers:
                     "farewell_reason": row.get("farewell_reason"),
                     "left_at": left_at,  # aware datetime or None
                 }
+                changed = True
+        return changed
+
+    def record_left(self, row: dict, left_at: datetime | None, played_raw: str | None) -> bool:
+        aid = row.get("account_id")
+        if not aid:
+            return False
+        with self._lock:
+            existing = self._players.get(aid)
+            if existing and existing.get("left_at") and left_at and existing["left_at"] >= left_at:
+                return False
+            self._players[aid] = {
+                "name": row.get("name") or existing.get("name") if existing else row.get("name"),
+                "account_id": aid,
+                "session_id": row.get("session_id"),
+                "state": "left",
+                "time_in_game": played_raw,
+                "farewell_reason": "left",
+                "left_at": left_at,
+            }
+        return True
 
     def snapshot(self, exclude_account_ids: set[str] | None = None) -> list[dict]:
         exclude = exclude_account_ids or set()
@@ -211,6 +275,51 @@ class KnownPlayers:
             rows = [p for aid, p in self._players.items() if aid not in exclude]
         rows.sort(key=lambda p: p.get("left_at") or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
         return rows
+
+    def to_json_rows(self) -> list[dict]:
+        with self._lock:
+            rows = [_json_ready_row(p) for p in self._players.values()]
+        rows.sort(key=lambda p: p.get("left_at") or "", reverse=True)
+        return rows
+
+
+class StateStore:
+    def __init__(self, path: str) -> None:
+        self.path = path
+
+    def load_known_players(self, known: KnownPlayers) -> int:
+        try:
+            with open(self.path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            return 0
+        except (OSError, json.JSONDecodeError) as e:
+            log.warning("Could not load state file %s: %s", self.path, e)
+            return 0
+
+        rows = data.get("recently_seen", [])
+        if not isinstance(rows, list):
+            log.warning("State file %s has invalid recently_seen data; ignoring", self.path)
+            return 0
+        return known.load(rows)
+
+    def save_known_players(self, known: KnownPlayers) -> None:
+        directory = os.path.dirname(os.path.abspath(self.path))
+        payload = {
+            "version": 1,
+            "saved_at": datetime.now(timezone.utc).isoformat(),
+            "recently_seen": known.to_json_rows(),
+        }
+        tmp_path = f"{self.path}.tmp"
+        try:
+            if directory:
+                os.makedirs(directory, exist_ok=True)
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2)
+                f.write("\n")
+            os.replace(tmp_path, self.path)
+        except OSError as e:
+            log.warning("Could not save state file %s: %s", self.path, e)
 
 
 class DiscordNotifier:
@@ -254,10 +363,17 @@ class DiscordNotifier:
 
 
 class DumpParser:
-    def __init__(self, roster: Roster, known: KnownPlayers, notifier: DiscordNotifier) -> None:
+    def __init__(
+        self,
+        roster: Roster,
+        known: KnownPlayers,
+        notifier: DiscordNotifier,
+        on_known_changed=None,
+    ) -> None:
         self.roster = roster
         self.known = known
         self.notifier = notifier
+        self.on_known_changed = on_known_changed
         self.in_dump = False
         self.section: str | None = None
         self.pending: dict[str, list[dict]] = {}
@@ -374,7 +490,7 @@ class DumpParser:
 
         # Update last-seen tracker from every Disconnected row in this dump.
         # This naturally backfills history when the script starts mid-session.
-        self.known.update_from_disconnected(disconnected)
+        known_changed = self.known.update_from_disconnected(disconnected)
 
         # The Disconnected section can contain MULTIPLE entries for the same
         # account_id (one per past session). Match the leaving player to their
@@ -407,6 +523,7 @@ class DumpParser:
                     played = _format_timedelta(td)
                 else:
                     played = _format_duration_str(played_raw)
+                known_changed = self.known.record_left(row, self.last_log_time, played_raw) or known_changed
 
             name = row.get("name") or "(unnamed)"
             played_part = f" played {played}" if played else ""
@@ -418,6 +535,12 @@ class DumpParser:
             "dump #%d parsed: connected=%d reserved=%d disconnected=%d",
             self.dump_count, len(connected), len(reserved), len(disconnected),
         )
+
+        if known_changed and self.on_known_changed:
+            try:
+                self.on_known_changed()
+            except Exception:
+                log.exception("state persistence callback failed")
 
     def _finalize_server_desc(self) -> None:
         raw = "\n".join(self._server_desc_buf)
@@ -625,272 +748,72 @@ def tail_file(
         time.sleep(10)
 
 
-WINDROSE_SVG = """\
-<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-  <defs>
-    <g id="major-arm">
-      <polygon points="50,6 47,48 50,50" fill="#a07a30"/>
-      <polygon points="50,6 53,48 50,50" fill="#e6c275"/>
-    </g>
-    <g id="minor-arm">
-      <polygon points="50,20 48,49 50,50" fill="#7a5b22"/>
-      <polygon points="50,20 52,49 50,50" fill="#c9a55b"/>
-    </g>
-  </defs>
-  <circle cx="50" cy="50" r="46" fill="none" stroke="#d4a657" stroke-width="0.8"/>
-  <circle cx="50" cy="50" r="38" fill="none" stroke="#d4a657" stroke-width="0.4" opacity="0.6"/>
-  <use href="#minor-arm" transform="rotate(45 50 50)"/>
-  <use href="#minor-arm" transform="rotate(135 50 50)"/>
-  <use href="#minor-arm" transform="rotate(225 50 50)"/>
-  <use href="#minor-arm" transform="rotate(315 50 50)"/>
-  <use href="#major-arm"/>
-  <use href="#major-arm" transform="rotate(90 50 50)"/>
-  <use href="#major-arm" transform="rotate(180 50 50)"/>
-  <use href="#major-arm" transform="rotate(270 50 50)"/>
-  <circle cx="50" cy="50" r="2.5" fill="#d4a657"/>
-  <text x="50" y="4.5" font-size="5" fill="#d4a657" text-anchor="middle"
-        font-family="Georgia, serif" font-weight="700">N</text>
-</svg>"""
-
-PAGE_TMPL = """<!doctype html>
-<html lang="en"><head>
-<meta charset="utf-8">
-<meta http-equiv="refresh" content="10">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{page_title}</title>
-<style>
-  :root {{
-    --bg: #0d1422;
-    --bg-2: #131c2e;
-    --panel: #182338;
-    --border: #233149;
-    --text: #e8eef9;
-    --muted: #8395ad;
-    --gold: #d4a657;
-    --gold-dim: #a07a30;
-    --green: #6dcf91;
-    --red: #d97a7a;
-  }}
-  * {{ box-sizing: border-box; }}
-  body {{
-    margin: 0;
-    background: radial-gradient(ellipse at top, var(--bg-2), var(--bg) 60%);
-    color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    min-height: 100vh;
-    padding: 0 1rem 4rem;
-  }}
-  .container {{ max-width: 920px; margin: 0 auto; }}
-  .banner {{
-    display: flex; align-items: center; gap: 1.5rem;
-    margin-top: 2rem;
-    padding: 1.5rem 1.75rem;
-    background: linear-gradient(135deg, var(--panel), #1d2a44);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    box-shadow: 0 6px 28px rgba(0,0,0,0.35);
-  }}
-  .banner svg {{ width: 86px; height: 86px; flex-shrink: 0; filter: drop-shadow(0 2px 6px rgba(0,0,0,0.4)); }}
-  .banner h1 {{
-    margin: 0;
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 1.7rem;
-    color: var(--gold);
-    letter-spacing: 0.02em;
-  }}
-  .banner .subtitle {{
-    margin-top: 0.2rem;
-    color: var(--muted);
-    font-size: 0.85rem;
-  }}
-  .banner .server-status {{
-    margin-top: 0.45rem;
-    font-size: 0.85rem;
-    color: var(--green);
-  }}
-  .info-chips {{
-    display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.55rem;
-  }}
-  .chip {{
-    display: inline-flex; align-items: center; gap: 0.3rem;
-    padding: 0.18rem 0.55rem;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    font-size: 0.78rem;
-    color: var(--muted);
-  }}
-  .chip-lock {{ color: var(--gold); border-color: rgba(212,166,87,0.3); background: rgba(212,166,87,0.06); }}
-  .chip-open {{ color: var(--green); border-color: rgba(109,207,145,0.25); background: rgba(109,207,145,0.05); }}
-  .chip-mono {{ font-family: "Cascadia Code", Consolas, "SF Mono", Menlo, monospace; font-size: 0.74rem; }}
-  .section {{
-    margin-top: 1.25rem;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 1.25rem 1.5rem;
-  }}
-  .section-head {{
-    display: flex; align-items: baseline; justify-content: space-between;
-    margin-bottom: 0.75rem;
-  }}
-  .section-head h2 {{
-    margin: 0;
-    font-family: Georgia, serif;
-    font-size: 1.1rem;
-    color: var(--gold);
-    letter-spacing: 0.04em;
-  }}
-  .pill {{
-    display: inline-block;
-    padding: 0.15rem 0.65rem;
-    border-radius: 999px;
-    font-size: 0.78rem;
-    font-weight: 600;
-    letter-spacing: 0.03em;
-  }}
-  .pill.online {{ background: rgba(109,207,145,0.15); color: var(--green); border: 1px solid rgba(109,207,145,0.35); }}
-  .pill.offline {{ background: rgba(131,149,173,0.12); color: var(--muted); border: 1px solid rgba(131,149,173,0.3); }}
-  table {{ width: 100%; border-collapse: collapse; }}
-  th {{
-    text-align: left; padding: 0.45rem 0.5rem; font-size: 0.75rem;
-    color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em;
-    border-bottom: 1px solid var(--border); font-weight: 600;
-  }}
-  td {{
-    padding: 0.65rem 0.5rem; font-size: 0.95rem;
-    border-bottom: 1px solid var(--border);
-  }}
-  tr:last-child td {{ border-bottom: none; }}
-  td.name {{ font-weight: 600; }}
-  td.muted, .muted {{ color: var(--muted); font-size: 0.88rem; }}
-  td.mono, code {{
-    font-family: "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
-    font-size: 0.8rem; color: var(--muted);
-  }}
-  .dot {{
-    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
-    margin-right: 0.55rem; vertical-align: middle;
-  }}
-  .dot.on {{ background: var(--green); box-shadow: 0 0 8px rgba(109,207,145,0.6); }}
-  .dot.off {{ background: var(--muted); opacity: 0.5; }}
-  .empty {{ color: var(--muted); padding: 1rem 0; text-align: center; font-style: italic; }}
-  .as-of {{ color: var(--muted); font-size: 0.78rem; text-align: center; margin-top: 1.25rem; }}
-  @media (max-width: 540px) {{
-    .banner {{ flex-direction: column; text-align: center; padding: 1.25rem; }}
-    .banner svg {{ width: 72px; height: 72px; }}
-    .banner h1 {{ font-size: 1.35rem; }}
-    th.hide-sm, td.hide-sm {{ display: none; }}
-  }}
-</style>
-</head><body>
-<div class="container">
-  <header class="banner">
-    {svg}
-    <div>
-      {banner_head}
-    </div>
-  </header>
-
-  <section class="section">
-    <div class="section-head">
-      <h2>Online now</h2>
-      <span class="pill online">{online_count} online</span>
-    </div>
-    {online_table}
-  </section>
-
-  <section class="section">
-    <div class="section-head">
-      <h2>Recently seen</h2>
-      <span class="pill offline">{offline_count} known</span>
-    </div>
-    {offline_table}
-  </section>
-
-  <div class="as-of">updated <span class="ts-local" data-utc="{as_of_utc}">{as_of_utc}</span></div>
-</div>
-<script>
-(function() {{
-  var fmt = {{year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}};
-  document.querySelectorAll('.ts-local[data-utc]').forEach(function(el) {{
-    var d = new Date(el.getAttribute('data-utc'));
-    if (!isNaN(d)) el.textContent = d.toLocaleString(undefined, fmt);
-  }});
-}})();
-</script>
-</body></html>
-"""
+PUBLIC_PLAYER_FIELDS = {
+    "name",
+    "state",
+    "time_in_game",
+    "connected_in",
+    "time_on_server",
+    "farewell_reason",
+    "left_at",
+    "joined_at",
+    "as_of",
+}
 
 
-def _format_dt_cell(dt: datetime | None) -> str:
-    """Return HTML for a timestamp cell: a span with data-utc for JS local-time conversion."""
-    if dt is None:
-        return "—"
-    utc = dt.astimezone(timezone.utc)
-    iso = utc.strftime("%Y-%m-%dT%H:%M:%SZ")
-    return f'<span class="ts-local" data-utc="{iso}">{iso}</span>'
+def _public_player_row(row: dict) -> dict:
+    return {
+        key: value
+        for key, value in _json_ready_row(row).items()
+        if key in PUBLIC_PLAYER_FIELDS and value is not None
+    }
 
 
-def _ago_str(dt: datetime | None) -> str:
-    if dt is None:
-        return "—"
-    return _human_ago(datetime.now(timezone.utc) - dt)
+def is_api_players_path(path: str) -> bool:
+    return urlsplit(path).path == "/api/players"
 
 
-def _render_banner_head(server_info: dict | None, started_at: datetime | None) -> str:
-    now = datetime.now(timezone.utc)
+def is_dashboard_path(path: str) -> bool:
+    return urlsplit(path).path in {"/", "/index.html"}
 
-    if server_info:
-        name = escape(server_info.get("server_name") or "Windrose Server")
-        max_p = server_info.get("max_players", "?")
-        pw = server_info.get("password_protected", False)
-        world_id = server_info.get("world_id", "")
-        world_short = escape(world_id[:8] + "…") if world_id else ""
-        deploy = escape(server_info.get("deployment_id") or "")
 
-        lock_chip = (
-            '<span class="chip chip-lock">\U0001f512 Password Protected</span>'
-            if pw else
-            '<span class="chip chip-open">\U0001f513 Open Access</span>'
-        )
-        chips = [
-            lock_chip,
-            f'<span class="chip">\U0001f465 {max_p} players max</span>',
-        ]
-        if deploy:
-            chips.append(f'<span class="chip chip-mono">Server Version: {escape(deploy)}</span>')
-        chips_html = '<div class="info-chips">' + "".join(chips) + "</div>"
-        world_line = (
-            f'<div class="info-chips">'
-            f'<span class="chip chip-mono">\U0001f5fa️ World ID: {escape(world_id)}</span>'
-            f'</div>'
-            if world_id else ""
-        )
-    else:
-        name = "Windrose Server"
-        chips_html = ""
-        world_line = ""
+def resolve_asset_path(path: str) -> str | None:
+    parsed_path = unquote(urlsplit(path).path)
+    if not parsed_path.startswith("/assets/"):
+        return None
 
-    if started_at:
-        uptime = _human_duration(now - started_at)
-        started_iso = started_at.strftime("%Y-%m-%dT%H:%M:%SZ")
-        status = (
-            f'<span class="dot on"></span>Online'
-            f'&nbsp;&nbsp;·&nbsp;&nbsp;up {uptime}'
-            f'&nbsp;&nbsp;·&nbsp;&nbsp;since '
-            f'<span class="ts-local" data-utc="{started_iso}">{started_iso}</span>'
-        )
-    else:
-        status = '<span class="dot off"></span>Status unknown'
+    relative = parsed_path.removeprefix("/assets/")
+    if not relative or relative.startswith("."):
+        return None
 
-    return (
-        f'<h1>{name}</h1>\n'
-        f'      <div class="subtitle">Windrose Server Monitor</div>\n'
-        f'      <div class="server-status">{status}</div>\n'
-        f'      {chips_html}\n'
-        f'      {world_line}'
-    )
+    candidate = os.path.abspath(os.path.join(ASSETS_DIR, relative))
+    assets_root = os.path.abspath(ASSETS_DIR)
+    if os.path.commonpath([assets_root, candidate]) != assets_root:
+        return None
+    if not os.path.isfile(candidate):
+        return None
+    return candidate
+
+
+def load_dashboard_html() -> str:
+    with open(INDEX_HTML_PATH, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def build_api_payload(roster: Roster, known: KnownPlayers, parser: DumpParser) -> dict:
+    online, as_of = roster.snapshot()
+    online_aids = {p["account_id"] for p in online}
+    recent = known.snapshot(exclude_account_ids=online_aids)
+    started, server_info = parser.get_server_state()
+
+    return {
+        "online": [_public_player_row(row) for row in online],
+        "recently_seen": [_public_player_row(row) for row in recent],
+        "as_of": as_of,
+        "online_count": len(online),
+        "server_started_at": started.isoformat() if started else None,
+        "server_info": server_info,
+    }
 
 
 def make_handler(roster: Roster, known: KnownPlayers, parser: DumpParser):
@@ -899,48 +822,25 @@ def make_handler(roster: Roster, known: KnownPlayers, parser: DumpParser):
             log.debug("http %s - " + fmt, self.address_string(), *args)
 
         def do_GET(self):
-            online, as_of = roster.snapshot()
-            online_aids = {p["account_id"] for p in online}
-            recent = known.snapshot(exclude_account_ids=online_aids)
+            asset_path = resolve_asset_path(self.path)
+            if asset_path:
+                with open(asset_path, "rb") as f:
+                    body = f.read()
+                ctype = mimetypes.guess_type(asset_path)[0] or "application/octet-stream"
+                self._send(HTTPStatus.OK, body, ctype)
+                return
 
-            started, server_info = parser.get_server_state()
-
-            if self.path.startswith("/api/players"):
+            if is_api_players_path(self.path):
                 body = json.dumps(
-                    {
-                        "online": _jsonify(online),
-                        "recently_seen": _jsonify(recent),
-                        "as_of": as_of,
-                        "online_count": len(online),
-                        "server_started_at": started.isoformat() if started else None,
-                        "server_info": server_info,
-                    },
+                    build_api_payload(roster, known, parser),
                     indent=2,
                     default=str,
                 ).encode("utf-8")
                 self._send(HTTPStatus.OK, body, "application/json")
                 return
 
-            if self.path == "/" or self.path.startswith("/?"):
-                online_table = _render_online(online)
-                offline_table = _render_recent(recent)
-                as_of_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                banner_head = _render_banner_head(server_info, started)
-                page_title = (
-                    escape(server_info["server_name"]) + " · Windrose Monitor"
-                    if server_info and server_info.get("server_name")
-                    else "Windrose Server Monitor"
-                )
-                body = PAGE_TMPL.format(
-                    svg=WINDROSE_SVG,
-                    page_title=page_title,
-                    online_count=len(online),
-                    offline_count=len(recent),
-                    online_table=online_table,
-                    offline_table=offline_table,
-                    as_of_utc=as_of_utc,
-                    banner_head=banner_head,
-                ).encode("utf-8")
+            if is_dashboard_path(self.path):
+                body = load_dashboard_html().encode("utf-8")
                 self._send(HTTPStatus.OK, body, "text/html; charset=utf-8")
                 return
 
@@ -957,80 +857,13 @@ def make_handler(roster: Roster, known: KnownPlayers, parser: DumpParser):
     return Handler
 
 
-def _jsonify(rows: list[dict]) -> list[dict]:
-    out = []
-    for r in rows:
-        c = dict(r)
-        for k, v in list(c.items()):
-            if isinstance(v, datetime):
-                c[k] = v.isoformat()
-        out.append(c)
-    return out
-
-
-def _render_online(players: list[dict]) -> str:
-    if not players:
-        return '<div class="empty">No players online right now.</div>'
-
-    now = datetime.now(timezone.utc)
-    rendered_rows = []
-    for p in players:
-        name = escape(p.get('name') or '(unnamed)')
-        raw_dur = p.get('time_in_game')
-        as_of = p.get('as_of')  # aware datetime from log
-
-        # Extrapolate. timedelta(0) is falsy, so use `is not None` — otherwise
-        # players who just joined (TimeInGame +00:00:00) would display "0 mins"
-        # forever instead of growing as time passes.
-        td = _parse_duration(raw_dur)
-        if td is not None and as_of:
-            as_of_utc = as_of.astimezone(timezone.utc)
-            elapsed = now - as_of_utc
-            if elapsed.total_seconds() > 0:
-                td += elapsed
-            display_dur = _format_timedelta(td)
-        else:
-            display_dur = _format_duration_str(raw_dur) or "—"
-
-        rendered_rows.append(
-            f"<tr>"
-            f"<td class='name'><span class='dot on'></span>{name}</td>"
-            f"<td>{escape(display_dur)}</td>"
-            f"</tr>"
-        )
-
-    return (
-        "<table><thead><tr>"
-        "<th>Name</th><th>Time in game</th>"
-        "</tr></thead><tbody>" + "".join(rendered_rows) + "</tbody></table>"
-    )
-
-
-def _render_recent(players: list[dict]) -> str:
-    if not players:
-        return '<div class="empty">No history yet.</div>'
-    rows = "".join(
-        f"<tr>"
-        f"<td class='name'><span class='dot off'></span>{escape(p.get('name') or '(unnamed)')}</td>"
-        f"<td>{_format_dt_cell(p.get('left_at'))}</td>"
-        f"<td class='muted'>{escape(_ago_str(p.get('left_at')))}</td>"
-        f"<td class='muted hide-sm'>{escape(_format_duration_str(p.get('time_in_game')) or '—')}</td>"
-        f"</tr>"
-        for p in players
-    )
-    return (
-        "<table><thead><tr>"
-        "<th>Name</th><th>Last seen</th><th>How long ago</th>"
-        "<th class='hide-sm'>Last session played</th>"
-        "</tr></thead><tbody>" + rows + "</tbody></table>"
-    )
-
-
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Windrose dedicated-server player monitor")
     p.add_argument("--log", default="R5.log", help="path to R5.log")
     p.add_argument("--host", default="0.0.0.0", help="HTTP bind host (default all interfaces)")
     p.add_argument("--port", type=int, default=8080, help="HTTP bind port")
+    p.add_argument("--state", default=DEFAULT_STATE_PATH,
+                   help=f"path to persisted monitor state (default {DEFAULT_STATE_PATH})")
     p.add_argument("--webhook", default=None,
                    help="Discord webhook URL (overrides DISCORD_WEBHOOK_URL env var)")
     p.add_argument("-v", "--verbose", action="store_true")
@@ -1050,7 +883,19 @@ def main(argv: list[str] | None = None) -> int:
 
     roster = Roster()
     known = KnownPlayers()
-    parser = DumpParser(roster, known, notifier)
+    state_store = StateStore(args.state)
+    loaded_known = state_store.load_known_players(known)
+    if loaded_known:
+        log.info("Loaded %d recently seen players from %s", loaded_known, args.state)
+    else:
+        log.info("No persisted player state loaded from %s", args.state)
+
+    parser = DumpParser(
+        roster,
+        known,
+        notifier,
+        on_known_changed=lambda: state_store.save_known_players(known),
+    )
     stop = threading.Event()
 
     # Suppress notifications during the replay of historical content;

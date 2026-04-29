@@ -1,0 +1,718 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Windrose Server Monitor</title>
+<style>
+  :root {
+    --bg: #241a12;
+    --bg-deep: #17110c;
+    --panel: #332417;
+    --panel-soft: #3b2a1b;
+    --line: #61451f;
+    --line-soft: rgba(196, 139, 54, 0.22);
+    --text: #e8dbc6;
+    --muted: #a8916d;
+    --dim: #806537;
+    --gold: #f0c96b;
+    --gold-soft: #c79743;
+    --green: #a7d96e;
+    --shadow: rgba(9, 6, 4, 0.45);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    color: var(--text);
+    font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
+    background:
+      linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+      radial-gradient(ellipse at top, #3a2b1d 0%, var(--bg) 42%, var(--bg-deep) 100%);
+    background-size: 100% 46px, 100% 100%;
+    padding: 2rem 1rem 4rem;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+      linear-gradient(90deg, rgba(255,255,255,0.025), transparent 18%, transparent 82%, rgba(0,0,0,0.16)),
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.018) 0 1px, transparent 1px 92px);
+    opacity: 0.42;
+  }
+
+  .container {
+    width: min(1320px, 100%);
+    margin: 0 auto;
+    position: relative;
+  }
+
+  .banner,
+  .stat,
+  .panel {
+    background: linear-gradient(180deg, rgba(70, 51, 33, 0.82), rgba(43, 30, 20, 0.9));
+    border: 1px solid var(--line-soft);
+    box-shadow: 0 18px 44px var(--shadow), inset 0 1px 0 rgba(240, 201, 107, 0.08);
+  }
+
+  .banner {
+    display: grid;
+    grid-template-columns: 132px 1fr auto;
+    gap: 1.35rem;
+    align-items: center;
+    min-height: 168px;
+    padding: 1.6rem 2.15rem;
+  }
+
+  .crest {
+    position: relative;
+    width: 104px;
+    height: 104px;
+    border: 2px solid var(--gold-soft);
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+  }
+
+  .crest::before,
+  .crest::after {
+    content: "";
+    position: absolute;
+    inset: 12px;
+    border: 1px solid rgba(240, 201, 107, 0.72);
+    border-radius: 50%;
+  }
+
+  .crest::after {
+    inset: -9px 50%;
+    width: 1px;
+    border: 0;
+    background: var(--gold-soft);
+    box-shadow: 0 0 0 0 var(--gold-soft);
+  }
+
+  .pirate-logo {
+    width: 86px;
+    max-height: 74px;
+    object-fit: contain;
+    opacity: 0.9;
+    filter: drop-shadow(0 0 12px rgba(240, 201, 107, 0.18));
+  }
+
+  .eyebrow,
+  .label,
+  .panel-count,
+  .mini,
+  .state {
+    font-family: "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+  }
+
+  .eyebrow {
+    color: var(--dim);
+    font-size: 0.72rem;
+    margin-bottom: 0.6rem;
+  }
+
+  h1,
+  h2 {
+    margin: 0;
+    font-family: Georgia, "Times New Roman", serif;
+    color: var(--gold);
+    letter-spacing: 0;
+    font-weight: 700;
+  }
+
+  h1 {
+    font-size: clamp(2.15rem, 4.5vw, 3.8rem);
+    line-height: 0.95;
+    text-shadow: 0 2px 0 rgba(0,0,0,0.28);
+  }
+
+  h2 {
+    font-size: clamp(1.45rem, 2.4vw, 2rem);
+  }
+
+  .subtitle {
+    margin-top: 0.6rem;
+    color: #bca77f;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 1rem;
+    font-style: italic;
+  }
+
+  .status-block {
+    min-width: 220px;
+    text-align: right;
+  }
+
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.55rem;
+    min-height: 34px;
+    padding: 0.45rem 1rem;
+    color: var(--green);
+    border: 1px solid rgba(167, 217, 110, 0.7);
+    background: rgba(117, 144, 60, 0.12);
+    font-family: "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
+    font-size: 0.76rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+
+  .dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 12px rgba(167, 217, 110, 0.75);
+    flex: 0 0 auto;
+  }
+
+  .dot.off {
+    background: var(--muted);
+    box-shadow: none;
+    opacity: 0.55;
+  }
+
+  .uptime {
+    margin-top: 0.7rem;
+    color: var(--gold);
+    font-weight: 700;
+  }
+
+  .since {
+    margin-top: 0.45rem;
+    color: var(--muted);
+    font-size: 0.82rem;
+  }
+
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1rem;
+    margin-top: 1.65rem;
+  }
+
+  .stat {
+    min-height: 116px;
+    padding: 1.3rem 1.45rem;
+    border-top-color: rgba(240, 201, 107, 0.42);
+  }
+
+  .label {
+    color: var(--dim);
+    font-size: 0.73rem;
+    font-weight: 700;
+    margin-bottom: 0.75rem;
+  }
+
+  .stat-value {
+    color: var(--text);
+    font-size: 1.55rem;
+    font-weight: 800;
+    line-height: 1.05;
+    overflow-wrap: anywhere;
+  }
+
+  .stat-value .gold {
+    color: var(--gold);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 1.9rem;
+    font-weight: 400;
+  }
+
+  .stat-sub {
+    margin-top: 0.45rem;
+    color: var(--muted);
+    font-family: "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
+    font-size: 0.86rem;
+    overflow-wrap: anywhere;
+  }
+
+  .main-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.65fr) minmax(340px, 1fr);
+    gap: 1.6rem;
+    margin-top: 1.9rem;
+  }
+
+  .panel {
+    min-height: 430px;
+    padding: 1.95rem;
+  }
+
+  .section-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-bottom: 1.3rem;
+    border-bottom: 1px solid rgba(240, 201, 107, 0.14);
+    position: relative;
+  }
+
+  .section-head::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: -1px;
+    width: 74px;
+    height: 1px;
+    background: var(--gold);
+  }
+
+  .panel-count {
+    color: var(--dim);
+    font-size: 0.76rem;
+  }
+
+  .list {
+    display: grid;
+    gap: 0;
+    margin-top: 1.45rem;
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 1rem;
+    align-items: center;
+    min-height: 70px;
+    border-bottom: 1px solid rgba(196, 139, 54, 0.08);
+  }
+
+  .row:last-child { border-bottom: 0; }
+
+  .identity {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: 0.8rem;
+    align-items: center;
+    min-width: 0;
+  }
+
+  .identity .dot { justify-self: center; }
+
+  .name {
+    min-width: 0;
+    color: #eadfce;
+    font-size: 1.05rem;
+    font-weight: 800;
+    overflow-wrap: anywhere;
+  }
+
+  .meta {
+    margin-top: 0.25rem;
+    color: var(--dim);
+    font-family: "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
+    font-size: 0.78rem;
+    overflow-wrap: anywhere;
+  }
+
+  .time {
+    color: var(--gold);
+    font-family: "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
+    font-size: 1.05rem;
+    font-weight: 800;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .time .state {
+    display: block;
+    margin-top: 0.18rem;
+    color: var(--dim);
+    font-size: 0.66rem;
+    font-weight: 700;
+  }
+
+  .recent .row {
+    min-height: 68px;
+  }
+
+  .recent .name {
+    color: #c9b88e;
+    font-size: 1rem;
+  }
+
+  .recent .time {
+    color: var(--dim);
+    font-size: 0.86rem;
+  }
+
+  .recent .time strong {
+    display: block;
+    margin-top: 0.35rem;
+    color: #c9b88e;
+    font-size: 0.8rem;
+  }
+
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 28px;
+    margin-right: 0.75rem;
+    padding: 0.2rem 0.72rem;
+    color: var(--gold);
+    border: 1px solid rgba(240, 201, 107, 0.7);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 0.83rem;
+    font-style: italic;
+    white-space: nowrap;
+  }
+
+  .empty {
+    color: var(--muted);
+    padding: 2rem 0 0;
+    font-family: Georgia, "Times New Roman", serif;
+    font-style: italic;
+  }
+
+  .as-of {
+    margin-top: 1.15rem;
+    color: var(--dim);
+    font-family: "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
+    font-size: 0.75rem;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .hidden { display: none; }
+
+  @media (max-width: 980px) {
+    body { padding-top: 1rem; }
+    .banner {
+      grid-template-columns: 96px 1fr;
+      padding: 1.25rem;
+    }
+    .crest {
+      width: 82px;
+      height: 82px;
+    }
+    .pirate-logo { width: 68px; }
+    .status-block {
+      grid-column: 1 / -1;
+      text-align: left;
+    }
+    .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .main-grid { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 620px) {
+    body { padding-inline: 0.75rem; }
+    .banner {
+      grid-template-columns: 1fr;
+      gap: 1rem;
+      text-align: center;
+    }
+    .crest { margin: 0 auto; }
+    .status-block { text-align: center; }
+    .stats { grid-template-columns: 1fr; }
+    .panel { padding: 1.25rem; min-height: 0; }
+    .section-head { align-items: flex-start; flex-direction: column; }
+    .row {
+      grid-template-columns: 1fr;
+      gap: 0.35rem;
+      padding: 0.75rem 0;
+    }
+    .time { text-align: left; padding-left: 2.85rem; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header class="banner">
+    <div class="crest" aria-hidden="true">
+      <svg class="pirate-logo" viewBox="760 760 3480 2560" focusable="false">
+        <defs>
+          <filter id="pirate-invert" color-interpolation-filters="sRGB">
+            <feComponentTransfer>
+              <feFuncR type="table" tableValues="1 0"></feFuncR>
+              <feFuncG type="table" tableValues="1 0"></feFuncG>
+              <feFuncB type="table" tableValues="1 0"></feFuncB>
+            </feComponentTransfer>
+          </filter>
+          <mask id="pirate-ink-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="5000" height="5000" mask-type="luminance">
+            <image href="assets/2011.jpg" x="0" y="0" width="5000" height="5000" preserveAspectRatio="xMidYMid meet" filter="url(#pirate-invert)"></image>
+          </mask>
+        </defs>
+        <rect width="5000" height="5000" fill="#dab360" opacity="0.82" mask="url(#pirate-ink-mask)"></rect>
+      </svg>
+    </div>
+    <div>
+      <div class="eyebrow">Windrose - Server Monitor</div>
+      <h1 id="server-name">Windrose Server</h1>
+      <div class="subtitle" id="subtitle">Tailing R5.log live from the captain's quarters.</div>
+    </div>
+    <div class="status-block">
+      <div class="status-badge" id="status-badge"><span class="dot off"></span><span>Status unknown</span></div>
+      <div class="uptime" id="uptime">up -</div>
+      <div class="since" id="since">since -</div>
+    </div>
+  </header>
+
+  <section class="stats" aria-label="Server summary">
+    <div class="stat">
+      <div class="label">Crew aboard</div>
+      <div class="stat-value"><span class="gold" id="crew-online">0</span> / <span id="crew-max">?</span></div>
+      <div class="stat-sub" id="crew-open">berths unknown</div>
+    </div>
+    <div class="stat">
+      <div class="label">Access</div>
+      <div class="stat-value" id="access">Unknown</div>
+      <div class="stat-sub" id="access-sub">waiting for server info</div>
+    </div>
+    <div class="stat">
+      <div class="label">Island</div>
+      <div class="stat-value" id="world-short">Unknown</div>
+      <div class="stat-sub" id="world-sub">world id pending</div>
+    </div>
+    <div class="stat">
+      <div class="label">Build</div>
+      <div class="stat-value" id="build">Unknown</div>
+      <div class="stat-sub" id="build-sub">dashboard api - waiting</div>
+    </div>
+  </section>
+
+  <main class="main-grid">
+    <section class="panel">
+      <div class="section-head">
+        <h2>Crew on Watch</h2>
+        <div class="panel-count" id="online-count">0 live - ticking</div>
+      </div>
+      <div id="online-empty" class="empty">No crew are aboard right now.</div>
+      <div id="online-body" class="list hidden"></div>
+    </section>
+
+    <section class="panel recent">
+      <div class="section-head">
+        <h2>Last Seen</h2>
+        <div class="panel-count" id="recent-count">0 known</div>
+      </div>
+      <div id="recent-empty" class="empty">No history yet.</div>
+      <div id="recent-body" class="list hidden"></div>
+    </section>
+  </main>
+
+  <div class="as-of">updated <span id="as-of">loading</span></div>
+</div>
+
+<script>
+(function() {
+  var dateFmt = {year:'numeric', month:'short', day:'numeric', hour:'numeric', minute:'2-digit', timeZoneName:'short'};
+  var lastData = null;
+
+  function formatDate(value) {
+    if (!value) return '-';
+    var date = new Date(value);
+    return isNaN(date) ? '-' : date.toLocaleString(undefined, dateFmt);
+  }
+
+  function formatDuration(raw) {
+    if (!raw) return '-';
+    var parts = String(raw).replace(/^\+/, '').split(':');
+    if (parts.length !== 3) return raw;
+    var hours = parseInt(parts[0], 10);
+    var minutes = parseInt(parts[1], 10);
+    if (!hours && !minutes) return '< 1 min';
+    if (!hours) return minutes + ' min';
+    return hours + ' hr' + (minutes ? ' ' + minutes + ' min' : '');
+  }
+
+  function parseDurationMs(raw) {
+    if (!raw) return null;
+    var parts = String(raw).replace(/^\+/, '').split(':');
+    if (parts.length !== 3) return null;
+    var hours = parseInt(parts[0], 10);
+    var minutes = parseInt(parts[1], 10);
+    var seconds = parseFloat(parts[2]);
+    if (isNaN(hours) || isNaN(minutes) || isNaN(seconds)) return null;
+    return ((hours * 3600) + (minutes * 60) + seconds) * 1000;
+  }
+
+  function formatDurationMs(ms) {
+    if (ms === null || isNaN(ms)) return '-';
+    var minutes = Math.floor(Math.max(0, ms) / 60000);
+    if (minutes < 1) return '< 1 min';
+    if (minutes < 60) return minutes + ' min';
+    var hours = Math.floor(minutes / 60);
+    var rem = minutes % 60;
+    return hours + ' hr' + (rem ? ' ' + rem + ' min' : '');
+  }
+
+  function formatPlayerDuration(player) {
+    var base = parseDurationMs(player.time_in_game);
+    if (base === null) return formatDuration(player.time_in_game);
+    var asOf = player.as_of ? new Date(player.as_of) : null;
+    if (asOf && !isNaN(asOf)) {
+      base += Math.max(0, Date.now() - asOf.getTime());
+    }
+    return formatDurationMs(base);
+  }
+
+  function ago(value) {
+    if (!value) return '-';
+    var date = new Date(value);
+    if (isNaN(date)) return '-';
+    var seconds = Math.max(0, (Date.now() - date.getTime()) / 1000);
+    if (seconds < 60) return 'just now';
+    var minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return minutes + ' min ago';
+    var hours = Math.floor(minutes / 60);
+    if (hours < 24) return hours + ' hr ago';
+    var days = Math.floor(hours / 24);
+    return days + ' day' + (days === 1 ? '' : 's') + ' ago';
+  }
+
+  function setText(id, value) {
+    document.getElementById(id).textContent = value;
+  }
+
+  function text(value) {
+    return document.createTextNode(value || '-');
+  }
+
+  function append(parent, tag, className, value) {
+    var node = document.createElement(tag);
+    if (className) node.className = className;
+    if (value !== undefined) node.appendChild(text(value));
+    parent.appendChild(node);
+    return node;
+  }
+
+  function setList(listId, emptyId, rows, renderRow) {
+    var list = document.getElementById(listId);
+    var empty = document.getElementById(emptyId);
+    list.textContent = '';
+    if (!rows.length) {
+      list.classList.add('hidden');
+      empty.classList.remove('hidden');
+      return;
+    }
+    list.classList.remove('hidden');
+    empty.classList.add('hidden');
+    rows.forEach(function(item, index) { list.appendChild(renderRow(item, index)); });
+  }
+
+  function renderIdentity(row, player, online) {
+    var identity = append(row, 'div', 'identity');
+    var dot = append(identity, 'span', 'dot' + (online ? '' : ' off'));
+    dot.setAttribute('aria-hidden', 'true');
+    var copy = append(identity, 'div');
+    append(copy, 'div', 'name', player.name || '(unnamed)');
+    append(copy, 'div', 'meta', online ? (player.state || 'In game') : (player.farewell_reason || player.state || 'disconnected'));
+  }
+
+  function renderOnlineRow(player, index) {
+    var row = document.createElement('div');
+    row.className = 'row';
+    renderIdentity(row, player, true);
+    var time = append(row, 'div', 'time', formatPlayerDuration(player));
+    if (index === 0) {
+      var tag = append(time, 'span', 'tag', 'Longest watch');
+      time.insertBefore(tag, time.firstChild);
+    }
+    append(time, 'span', 'state', 'in game');
+    return row;
+  }
+
+  function renderRecentRow(player) {
+    var row = document.createElement('div');
+    row.className = 'row';
+    renderIdentity(row, player, false);
+    var time = append(row, 'div', 'time', ago(player.left_at));
+    var played = formatDuration(player.time_in_game);
+    append(time, 'strong', '', 'played ' + played);
+    return row;
+  }
+
+  function shortId(value) {
+    if (!value) return 'Unknown';
+    value = String(value);
+    return value.length > 9 ? value.slice(0, 8) + '...' : value;
+  }
+
+  function uptime(startedAt) {
+    if (!startedAt) return '-';
+    var date = new Date(startedAt);
+    if (isNaN(date)) return '-';
+    return formatDurationMs(Date.now() - date.getTime());
+  }
+
+  function buildLabel(info) {
+    var deployment = info.deployment_id || '';
+    if (!deployment) return 'Unknown';
+    var match = String(deployment).match(/(\d+\.\d+(?:\.\d+)?(?:-[A-Za-z0-9]+)?)/);
+    return match ? 'v' + match[1].replace(/^v/, '') : shortId(deployment);
+  }
+
+  function render(data) {
+    lastData = data;
+    var info = data.server_info || {};
+    var online = data.online || [];
+    var recent = data.recently_seen || [];
+    var maxPlayers = info.max_players || '?';
+    var openBerths = typeof info.max_players === 'number' ? Math.max(0, info.max_players - online.length) : '?';
+
+    if (info.server_name) {
+      document.title = info.server_name + ' - Windrose Monitor';
+      setText('server-name', info.server_name);
+    }
+
+    if (data.server_started_at) {
+      document.getElementById('status-badge').innerHTML = '<span class="dot"></span><span>All hands present</span>';
+      setText('uptime', 'up ' + uptime(data.server_started_at));
+      setText('since', 'since ' + formatDate(data.server_started_at));
+    }
+
+    setText('crew-online', online.length);
+    setText('crew-max', maxPlayers);
+    setText('crew-open', openBerths + ' berth' + (openBerths === 1 ? '' : 's') + ' open');
+    setText('access', info.password_protected ? 'Passworded' : 'Open Waters');
+    setText('access-sub', info.password_protected ? 'password required' : 'no password set');
+    setText('world-short', shortId(info.world_id));
+    setText('world-sub', info.world_id ? 'world id - ' + String(info.world_id).length + ' chars' : 'world id pending');
+    setText('build', buildLabel(info));
+    setText('build-sub', 'dashboard api - live');
+    setText('online-count', online.length + ' live - ticking');
+    setText('recent-count', recent.length + ' known');
+    setText('as-of', formatDate(data.as_of));
+
+    setList('online-body', 'online-empty', online, renderOnlineRow);
+    setList('recent-body', 'recent-empty', recent, renderRecentRow);
+  }
+
+  function refresh() {
+    fetch('/api/players', {cache: 'no-store'})
+      .then(function(response) {
+        if (!response.ok) throw new Error('API returned ' + response.status);
+        return response.json();
+      })
+      .then(render)
+      .catch(function() {
+        setText('as-of', 'unable to load');
+      });
+  }
+
+  refresh();
+  setInterval(refresh, 10000);
+  setInterval(function() {
+    if (lastData) render(lastData);
+  }, 30000);
+})();
+</script>
+</body>
+</html>
