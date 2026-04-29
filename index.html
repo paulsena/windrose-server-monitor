@@ -6,19 +6,20 @@
 <title>Windrose Server Monitor</title>
 <style>
   :root {
-    --bg: #241a12;
-    --bg-deep: #17110c;
-    --panel: #332417;
-    --panel-soft: #3b2a1b;
-    --line: #61451f;
-    --line-soft: rgba(196, 139, 54, 0.22);
-    --text: #e8dbc6;
-    --muted: #a8916d;
-    --dim: #806537;
-    --gold: #f0c96b;
-    --gold-soft: #c79743;
-    --green: #a7d96e;
-    --shadow: rgba(9, 6, 4, 0.45);
+    --bg: #171b21;
+    --bg-deep: #0c0f13;
+    --line-soft: rgba(183, 127, 35, 0.44);
+    --line-faint: rgba(183, 127, 35, 0.18);
+    --text: #efe4cc;
+    --muted: #b9a57a;
+    --dim: #8e7344;
+    --gold: #f1d18a;
+    --gold-soft: #b77f23;
+    --green: #b8d47a;
+    --shadow: rgba(0, 0, 0, 0.64);
+    --font-body: "Segoe UI", Candara, "Trebuchet MS", system-ui, sans-serif;
+    --font-display: Constantia, "Palatino Linotype", Palatino, Georgia, serif;
+    --font-mono: Consolas, "Cascadia Code", "SF Mono", Menlo, monospace;
   }
 
   * { box-sizing: border-box; }
@@ -27,11 +28,11 @@
     margin: 0;
     min-height: 100vh;
     color: var(--text);
-    font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
+    font-family: var(--font-body);
     background:
-      linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
-      radial-gradient(ellipse at top, #3a2b1d 0%, var(--bg) 42%, var(--bg-deep) 100%);
-    background-size: 100% 46px, 100% 100%;
+      radial-gradient(ellipse at top, rgba(82, 59, 27, 0.2) 0%, transparent 46%),
+      linear-gradient(180deg, #1d2229 0%, var(--bg) 42%, var(--bg-deep) 100%);
+    background-size: 100% 100%;
     padding: 2rem 1rem 4rem;
     font-size: 14px;
     font-weight: 400;
@@ -42,10 +43,14 @@
     position: fixed;
     inset: 0;
     pointer-events: none;
-    background:
-      linear-gradient(90deg, rgba(255,255,255,0.025), transparent 18%, transparent 82%, rgba(0,0,0,0.16)),
-      repeating-linear-gradient(0deg, rgba(255,255,255,0.018) 0 1px, transparent 1px 92px);
-    opacity: 0.42;
+    background-image:
+      url("data:image/svg+xml,%3Csvg width='720' height='520' viewBox='0 0 720 520' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='%23b77f23' stroke-opacity='.24' stroke-width='1.15'%3E%3Cpath d='M42 110c56-42 116-42 181 0s132 44 202 5 139-42 211-9'/%3E%3Cpath d='M28 166c70-35 139-30 207 14s137 47 206 8 148-45 238-18'/%3E%3Cpath d='M72 246c53-29 105-25 155 13s103 38 159 0 118-45 186-20 103 28 135 10'/%3E%3Cpath d='M10 342c82-48 161-47 237 4s147 50 214-3 141-58 222-14'/%3E%3Cpath d='M96 432c62-34 123-31 184 7s123 34 186-12 127-48 192-4'/%3E%3Cpath d='M472 88c36 20 61 48 75 83 16 41 47 64 92 69'/%3E%3Cpath d='M146 72c22 48 55 81 98 100 45 20 70 53 75 100'/%3E%3Cpath d='M358 182c-26 33-29 67-9 101 17 29 13 59-12 89'/%3E%3C/g%3E%3Cg fill='none' stroke='%23f1d18a' stroke-opacity='.16' stroke-width='1'%3E%3Ccircle cx='580' cy='370' r='54'/%3E%3Ccircle cx='580' cy='370' r='78'/%3E%3Cpath d='M580 278v184M488 370h184M516 306l128 128M644 306L516 434'/%3E%3Cpath d='M98 328c46-18 89-10 129 24 33 28 74 30 123 6' stroke-dasharray='5 10'/%3E%3Cpath d='M520 124c-45 36-75 75-90 118' stroke-dasharray='5 10'/%3E%3C/g%3E%3C/svg%3E"),
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.012) 0 1px, transparent 1px 96px),
+      repeating-linear-gradient(90deg, rgba(255,255,255,0.01) 0 1px, transparent 1px 96px);
+    background-position: center 24px, center, center;
+    background-size: 720px 520px, 96px 96px, 96px 96px;
+    opacity: 0.35;
+    mix-blend-mode: screen;
   }
 
   .container {
@@ -57,66 +62,80 @@
   .banner,
   .stat,
   .panel {
-    background: linear-gradient(180deg, rgba(70, 51, 33, 0.82), rgba(43, 30, 20, 0.9));
+    background:
+      linear-gradient(180deg, rgba(37, 35, 30, 0.96), rgba(29, 25, 20, 0.98)),
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.018) 0 1px, transparent 1px 4px);
     border: 1px solid var(--line-soft);
-    box-shadow: 0 18px 44px var(--shadow), inset 0 1px 0 rgba(240, 201, 107, 0.08);
+    box-shadow:
+      0 22px 54px var(--shadow),
+      inset 0 1px 0 rgba(241, 209, 138, 0.08),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.025);
   }
 
   .banner {
     display: grid;
-    grid-template-columns: 132px 1fr auto;
-    gap: 1.35rem;
+    grid-template-columns: 138px 1fr auto;
+    gap: 1.55rem;
     align-items: center;
     min-height: 168px;
     padding: 1.6rem 2.15rem;
+    position: relative;
+    overflow: hidden;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(166, 118, 42, 0.22), transparent 58%),
+      radial-gradient(ellipse at 12% 50%, rgba(241, 209, 138, 0.08), transparent 34%),
+      radial-gradient(ellipse at 88% 42%, rgba(183, 127, 35, 0.1), transparent 38%),
+      linear-gradient(135deg, rgba(27, 30, 33, 0.99) 0%, rgba(14, 14, 13, 0.99) 48%, rgba(31, 22, 13, 0.98) 100%),
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.014) 0 1px, transparent 1px 4px);
+    border-color: rgba(183, 127, 35, 0.52);
+    box-shadow:
+      0 24px 58px rgba(0, 0, 0, 0.68),
+      inset 0 1px 0 rgba(241, 209, 138, 0.1),
+      inset 0 0 0 1px rgba(255,255,255,0.018);
   }
 
-  .crest {
+  .brand-mark {
     position: relative;
-    width: 104px;
-    height: 104px;
-    border: 2px solid var(--gold-soft);
-    border-radius: 50%;
+    width: 124px;
+    height: 124px;
     display: grid;
     place-items: center;
-  }
-
-  .crest::before,
-  .crest::after {
-    content: "";
-    position: absolute;
-    inset: 12px;
-    border: 1px solid rgba(240, 201, 107, 0.72);
+    overflow: hidden;
+    background:
+      radial-gradient(circle, rgba(241, 209, 138, 0.06), rgba(10, 9, 8, 0.18) 64%),
+      rgba(10, 9, 8, 0.16);
+    border: 1px solid rgba(183, 127, 35, 0.34);
     border-radius: 50%;
-  }
-
-  .crest::after {
-    inset: -9px 50%;
-    width: 1px;
-    border: 0;
-    background: var(--gold-soft);
-    box-shadow: 0 0 0 0 var(--gold-soft);
+    box-shadow:
+      inset 0 0 0 1px rgba(241, 209, 138, 0.05),
+      0 10px 22px rgba(0, 0, 0, 0.28);
   }
 
   .pirate-logo {
-    width: 86px;
-    max-height: 74px;
+    width: 104px;
+    max-height: 104px;
     object-fit: contain;
-    opacity: 0.9;
-    filter: drop-shadow(0 0 12px rgba(240, 201, 107, 0.18));
+    opacity: 0.92;
+    filter:
+      invert(1)
+      sepia(0.16)
+      saturate(0.7)
+      brightness(1.08)
+      drop-shadow(0 8px 18px rgba(0, 0, 0, 0.46));
+    mix-blend-mode: screen;
   }
 
   .eyebrow,
   .panel-count,
   .mini,
   .state {
-    font-family: "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
+    font-family: var(--font-mono);
     text-transform: uppercase;
     letter-spacing: 0.18em;
   }
 
   .eyebrow {
-    color: var(--dim);
+    color: var(--gold);
     font-size: 0.72rem;
     margin-bottom: 0.6rem;
   }
@@ -124,7 +143,7 @@
   h1,
   h2 {
     margin: 0;
-    font-family: Georgia, "Times New Roman", serif;
+    font-family: var(--font-display);
     color: var(--gold);
     letter-spacing: 0;
     font-weight: 400;
@@ -133,7 +152,8 @@
   h1 {
     font-size: clamp(1.8rem, 4vw, 3rem);
     line-height: 1;
-    text-shadow: 0 2px 0 rgba(0,0,0,0.28);
+    color: #fff7e8;
+    text-shadow: 0 2px 0 rgba(0,0,0,0.55), 0 0 22px rgba(241, 209, 138, 0.16);
   }
 
   h2 {
@@ -142,8 +162,8 @@
 
   .subtitle {
     margin-top: 0.6rem;
-    color: #bca77f;
-    font-family: Georgia, "Times New Roman", serif;
+    color: #d2bd92;
+    font-family: var(--font-display);
     font-size: 1rem;
     font-style: italic;
   }
@@ -159,7 +179,7 @@
     justify-content: flex-end;
     gap: 0.45rem;
     color: var(--green);
-    font-family: "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
+    font-family: var(--font-mono);
     font-size: 0.72rem;
     font-weight: 600;
     letter-spacing: 0.12em;
@@ -172,7 +192,7 @@
     height: 9px;
     border-radius: 50%;
     background: var(--green);
-    box-shadow: 0 0 12px rgba(167, 217, 110, 0.75);
+    box-shadow: 0 0 12px rgba(184, 212, 122, 0.62);
     flex: 0 0 auto;
   }
 
@@ -184,7 +204,7 @@
 
   .since {
     margin-top: 0.45rem;
-    color: var(--muted);
+    color: #c8b58d;
     font-size: 0.78rem;
   }
 
@@ -193,8 +213,8 @@
     flex-wrap: wrap;
     gap: 0.35rem 1rem;
     margin-top: 0.95rem;
-    color: var(--dim);
-    font-family: "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
+    color: var(--muted);
+    font-family: var(--font-mono);
     font-size: 0.68rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -208,12 +228,12 @@
   }
 
   .meta-label {
-    color: rgba(168, 145, 109, 0.68);
+    color: rgba(185, 165, 122, 0.62);
     margin: 0;
   }
 
   .meta-value {
-    color: #bca77f;
+    color: #d8c49a;
     font-weight: 600;
     overflow-wrap: anywhere;
   }
@@ -227,43 +247,58 @@
 
   .panel {
     min-height: 430px;
-    padding: 1.95rem;
+    padding: 0 1.95rem 1.95rem;
+    position: relative;
+    overflow: hidden;
+    background:
+      linear-gradient(180deg, rgba(50, 39, 27, 0.98) 0%, rgba(34, 29, 23, 0.98) 42%, rgba(22, 20, 17, 0.98) 100%),
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.014) 0 1px, transparent 1px 4px);
+  }
+
+  .panel::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    height: 64px;
+    background: linear-gradient(180deg, rgba(118, 80, 28, 0.98), rgba(78, 52, 20, 0.92));
+    border-bottom: 1px solid var(--line-soft);
+    opacity: 1;
+    z-index: 0;
   }
 
   .section-head {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    padding-bottom: 1.3rem;
-    border-bottom: 1px solid rgba(240, 201, 107, 0.14);
+    min-height: 64px;
+    padding: 0;
+    border-bottom: 1px solid rgba(241, 209, 138, 0.34);
     position: relative;
-  }
-
-  .section-head::after {
-    content: "";
-    position: absolute;
-    left: 0;
-    bottom: -1px;
-    width: 74px;
-    height: 1px;
-    background: var(--gold);
+    z-index: 1;
   }
 
   .panel-count {
-    color: var(--muted);
-    font-size: 0.75rem;
+    color: #cab891;
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-style: italic;
+    letter-spacing: 0;
+    text-transform: none;
   }
 
   .panel-count span {
-    color: var(--gold);
+    color: #fff7e8;
     font-weight: 700;
+    text-shadow: 0 1px 0 rgba(0,0,0,0.42);
   }
 
   .list {
     display: grid;
     gap: 0;
     margin-top: 1.45rem;
+    position: relative;
+    z-index: 1;
   }
 
   .row {
@@ -272,7 +307,9 @@
     gap: 1rem;
     align-items: center;
     min-height: 70px;
-    border-bottom: 1px solid rgba(196, 139, 54, 0.08);
+    margin-inline: -0.75rem;
+    padding-inline: 0.75rem;
+    border-bottom: 1px solid rgba(218, 174, 88, 0.12);
   }
 
   .row:last-child { border-bottom: 0; }
@@ -289,7 +326,7 @@
 
   .name {
     min-width: 0;
-    color: #eadfce;
+    color: #fff0d8;
     font-size: 0.95rem;
     font-weight: 600;
     overflow-wrap: anywhere;
@@ -297,15 +334,15 @@
 
   .meta {
     margin-top: 0.2rem;
-    color: var(--dim);
-    font-family: "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
+    color: #aa8b59;
+    font-family: var(--font-mono);
     font-size: 0.7rem;
     overflow-wrap: anywhere;
   }
 
   .time {
     color: var(--gold);
-    font-family: "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
+    font-family: var(--font-mono);
     font-size: 0.95rem;
     font-weight: 600;
     text-align: right;
@@ -325,20 +362,20 @@
   }
 
   .recent .name {
-    color: #c9b88e;
+    color: #d9c59a;
     font-size: 0.9rem;
     font-weight: 500;
   }
 
   .recent .time {
-    color: var(--dim);
+    color: #9d8359;
     font-size: 0.8rem;
   }
 
   .recent .time strong {
     display: block;
     margin-top: 0.3rem;
-    color: #c9b88e;
+    color: #cdb98e;
     font-size: 0.75rem;
     font-weight: 500;
   }
@@ -351,24 +388,28 @@
     margin-right: 0.75rem;
     padding: 0.2rem 0.72rem;
     color: var(--gold);
-    border: 1px solid rgba(240, 201, 107, 0.7);
-    font-family: Georgia, "Times New Roman", serif;
+    background: rgba(107, 71, 23, 0.78);
+    border: 1px solid rgba(241, 209, 138, 0.6);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+    font-family: var(--font-display);
     font-size: 0.83rem;
     font-style: italic;
     white-space: nowrap;
   }
 
   .empty {
-    color: var(--muted);
+    color: #d2bd92;
     padding: 2rem 0 0;
-    font-family: Georgia, "Times New Roman", serif;
+    font-family: var(--font-display);
     font-style: italic;
+    position: relative;
+    z-index: 1;
   }
 
   .as-of {
     margin-top: 1.15rem;
-    color: var(--dim);
-    font-family: "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
+    color: #a78a5b;
+    font-family: var(--font-mono);
     font-size: 0.75rem;
     text-align: center;
     text-transform: uppercase;
@@ -383,11 +424,11 @@
       grid-template-columns: 96px 1fr;
       padding: 1.25rem;
     }
-    .crest {
+    .brand-mark {
       width: 82px;
       height: 82px;
     }
-    .pirate-logo { width: 68px; }
+    .pirate-logo { width: 74px; max-height: 74px; }
     .status-block {
       grid-column: 1 / -1;
       text-align: left;
@@ -402,10 +443,10 @@
       gap: 1rem;
       text-align: center;
     }
-    .crest { margin: 0 auto; }
+    .brand-mark { margin: 0 auto; }
     .status-block { text-align: center; }
     .server-meta { justify-content: center; }
-    .panel { padding: 1.25rem; min-height: 0; }
+    .panel { padding: 0 1.25rem 1.25rem; min-height: 0; }
     .section-head { align-items: flex-start; flex-direction: column; }
     .row {
       grid-template-columns: 1fr;
@@ -419,22 +460,8 @@
 <body>
 <div class="container">
   <header class="banner">
-    <div class="crest" aria-hidden="true">
-      <svg class="pirate-logo" viewBox="760 760 3480 2560" focusable="false">
-        <defs>
-          <filter id="pirate-invert" color-interpolation-filters="sRGB">
-            <feComponentTransfer>
-              <feFuncR type="table" tableValues="1 0"></feFuncR>
-              <feFuncG type="table" tableValues="1 0"></feFuncG>
-              <feFuncB type="table" tableValues="1 0"></feFuncB>
-            </feComponentTransfer>
-          </filter>
-          <mask id="pirate-ink-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="5000" height="5000" mask-type="luminance">
-            <image href="assets/2011.jpg" x="0" y="0" width="5000" height="5000" preserveAspectRatio="xMidYMid meet" filter="url(#pirate-invert)"></image>
-          </mask>
-        </defs>
-        <rect width="5000" height="5000" fill="#dab360" opacity="0.82" mask="url(#pirate-ink-mask)"></rect>
-      </svg>
+    <div class="brand-mark" aria-hidden="true">
+      <img class="pirate-logo" src="assets/pirate-theme-black.svg" alt="">
     </div>
     <div>
       <div class="eyebrow">Windrose - Server Monitor</div>
@@ -456,7 +483,7 @@
   <main class="main-grid">
     <section class="panel">
       <div class="section-head">
-        <h2>Crew on Watch</h2>
+        <h2>Crew On Board</h2>
         <div class="panel-count" id="online-count">Crew aboard: <span id="crew-online">0</span> / <span id="crew-max">?</span></div>
       </div>
       <div id="online-empty" class="empty">No crew are aboard right now.</div>
