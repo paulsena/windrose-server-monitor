@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Windrose server log (can be very large and contains private data)
+*.log
+
+# Environment / secrets
+.env
+.env.local
+
+# Editor / OS
+.claude/
+*.DS_Store
+Thumbs.db
+
+# Unused assets
+pirate.png
+GEMINI.md
