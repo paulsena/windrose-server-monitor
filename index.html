@@ -764,7 +764,9 @@
   function render(data) {
     lastData = data;
     var info = data.server_info || {};
-    var online = data.online || [];
+    var online = (data.online || []).slice().sort(function(a, b) {
+      return (parseDurationMs(b.time_in_game) || 0) - (parseDurationMs(a.time_in_game) || 0);
+    });
     var recent = data.recently_seen || [];
     var maxPlayers = info.max_players || '?';
 
