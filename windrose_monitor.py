@@ -188,24 +188,25 @@ class Roster:
             new: dict[str, dict] = {}
             joined: list[dict] = []
             for row in connected:
-                aid = row["account_id"]
+                name = row["name"]
                 row_with_meta = {**row, "as_of": as_of}
-                if aid in prev:
-                    new[aid] = {**row_with_meta, "joined_at": prev[aid]["joined_at"]}
+                if name in prev:
+                    new[name] = {**row_with_meta, "joined_at": prev[name]["joined_at"]}
                 else:
-                    new[aid] = {**row_with_meta, "joined_at": now_iso}
-                    joined.append(new[aid])
-            left = [prev[aid] for aid in prev if aid not in new]
+                    new[name] = {**row_with_meta, "joined_at": now_iso}
+                    joined.append(new[name])
+            left = [prev[name] for name in prev if name not in new]
             self._players = new
             return joined, left
 
 
 class KnownPlayers:
-    """Tracks the last time we observed each account leave the server.
+    """Tracks the last time we observed each player leave the server.
 
     Populated from the Disconnected section of every dump (so it backfills
     naturally from log history when the script starts mid-session). Most
-    recent disconnect per account_id wins.
+    recent disconnect per name wins. Keyed by name rather than account_id
+    because account_id can rotate between sessions after server upgrades.
     """
 
     def __init__(self) -> None:
@@ -216,12 +217,12 @@ class KnownPlayers:
         loaded = 0
         with self._lock:
             for row in rows:
-                aid = row.get("account_id")
-                if not aid:
+                name = row.get("name")
+                if not name:
                     continue
                 parsed = dict(row)
                 parsed["left_at"] = _parse_iso_datetime(row.get("left_at"))
-                self._players[aid] = parsed
+                self._players[name] = parsed
                 loaded += 1
         return loaded
 
@@ -229,18 +230,18 @@ class KnownPlayers:
         changed = False
         with self._lock:
             for row in rows:
-                aid = row.get("account_id")
-                if not aid:
+                name = row.get("name")
+                if not name:
                     continue
                 left_at = row.get("left_at")
-                existing = self._players.get(aid)
+                existing = self._players.get(name)
                 if existing and existing.get("left_at") and left_at and existing["left_at"] >= left_at:
                     continue  # we already have a more recent record
                 if existing and existing.get("left_at") and left_at is None:
                     continue  # avoid replacing a timestamped record with incomplete log data
-                self._players[aid] = {
-                    "name": row.get("name") or existing.get("name") if existing else row.get("name"),
-                    "account_id": aid,
+                self._players[name] = {
+                    "name": name,
+                    "account_id": row.get("account_id"),
                     "session_id": row.get("session_id"),
                     "state": row.get("state"),
                     "time_in_game": row.get("time_in_game"),
@@ -251,16 +252,16 @@ class KnownPlayers:
         return changed
 
     def record_left(self, row: dict, left_at: datetime | None, played_raw: str | None) -> bool:
-        aid = row.get("account_id")
-        if not aid:
+        name = row.get("name")
+        if not name:
             return False
         with self._lock:
-            existing = self._players.get(aid)
+            existing = self._players.get(name)
             if existing and existing.get("left_at") and left_at and existing["left_at"] >= left_at:
                 return False
-            self._players[aid] = {
-                "name": row.get("name") or existing.get("name") if existing else row.get("name"),
-                "account_id": aid,
+            self._players[name] = {
+                "name": name,
+                "account_id": row.get("account_id"),
                 "session_id": row.get("session_id"),
                 "state": "left",
                 "time_in_game": played_raw,
@@ -269,10 +270,10 @@ class KnownPlayers:
             }
         return True
 
-    def snapshot(self, exclude_account_ids: set[str] | None = None) -> list[dict]:
-        exclude = exclude_account_ids or set()
+    def snapshot(self, exclude_names: set[str] | None = None) -> list[dict]:
+        exclude = exclude_names or set()
         with self._lock:
-            rows = [p for aid, p in self._players.items() if aid not in exclude]
+            rows = [p for name, p in self._players.items() if name not in exclude]
         rows.sort(key=lambda p: p.get("left_at") or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
         return rows
 
@@ -478,12 +479,12 @@ class DumpParser:
         disconnected = self.pending.get("Disconnected Accounts", [])
 
         # Online = Reserved (handshaking) + Connected (playing).
-        # Dedupe by account_id; Connected wins if a player appears in both.
+        # Dedupe by name; Connected wins if a player appears in both.
         online: dict[str, dict] = {}
         for row in reserved:
-            online[row["account_id"]] = row
+            online[row["name"]] = row
         for row in connected:
-            online[row["account_id"]] = row
+            online[row["name"]] = row
 
         joined, left = self.roster.apply(list(online.values()), self.last_log_time)
         self.dump_count += 1
@@ -493,7 +494,7 @@ class DumpParser:
         known_changed = self.known.update_from_disconnected(disconnected)
 
         # The Disconnected section can contain MULTIPLE entries for the same
-        # account_id (one per past session). Match the leaving player to their
+        # player (one per past session). Match the leaving player to their
         # exit record by session_id, which is unique per connection.
         exit_by_session = {
             row["session_id"]: row
@@ -804,8 +805,8 @@ def load_dashboard_html() -> str:
 
 def build_api_payload(roster: Roster, known: KnownPlayers, parser: DumpParser) -> dict:
     online, as_of = roster.snapshot()
-    online_aids = {p["account_id"] for p in online}
-    recent = known.snapshot(exclude_account_ids=online_aids)
+    online_names = {p["name"] for p in online}
+    recent = known.snapshot(exclude_names=online_names)
     started, server_info = parser.get_server_state()
 
     return {
